@@ -259,3 +259,57 @@ chrome.runtime.onInstalled.addListener((details) => {
     writeInstallationVersion(chrome.storage.local, details);
     writeInstallationVersion(chrome.storage.sync, details);
 });
+
+
+
+// -------- WAL READER CUSTOM SCRIPT --------
+
+const PORT = '6767';
+const RECONNECT_DELAY = 5000;
+
+let ws: WebSocket | null = null;
+const address = `ws://localhost:${PORT}`
+
+async function setColor(color: string) {
+    await extension;
+    if (!color || color[0] !== '#' || color.length !== 7) {
+        console.log(`[Wal Reader] 🕆 Wrong color received: ${color}, must be #abcdef`)
+        return
+    }
+
+    const data = await Extension.collectData();
+    Extension.changeSettings({
+        theme: {
+            ...data.settings.theme,
+            darkSchemeBackgroundColor: color,
+        }
+    });
+    console.log(`[Wal Reader] New color received: ${color}`)
+}
+
+function reconnect() {
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+    }
+    const seconds = Math.round(RECONNECT_DELAY / 1000);
+    console.log(`[Wal Reader] Awaiting reconnect, wait ${seconds} seconds...`)
+    setTimeout(() => connect(), RECONNECT_DELAY);
+}
+
+function connect() {
+    // just in case
+    if (ws) {
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+    }
+
+    console.log(`[Wal Reader] Connecting to ${address}...`)
+    ws = new WebSocket(address);
+    ws.onopen = () => console.log(`[Wal Reader] Connected`);
+    ws.onmessage = (e) => setColor(e.data);
+    ws.onclose = () => reconnect();
+    ws.onerror = () => { }
+}
+
+connect()
