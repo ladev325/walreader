@@ -2,14 +2,14 @@ import asyncio
 import websockets
 from pathlib import Path
 
-COLOR_FILE = Path.home() / ".cache" / "wal" / "walreader"
+COLOR_FILE = Path.home() / ".cache" / "wal" / "walreader.json"
 PORT = 6767
 
 current_websocket = None
-prev_color = None
+prev_data = None
 
 async def handler(websocket):
-    global current_websocket, prev_color
+    global current_websocket, prev_data
     if current_websocket is not None:
         await current_websocket.close()
         print('[Wal Reader] Another client is trying to connect, dropped previous connection')
@@ -17,16 +17,16 @@ async def handler(websocket):
     current_websocket = websocket
     print('[Wal Reader] Client connected')
 
-    prev_color = None
+    prev_data = None
     try:
         while True:
             try:
                 with open(COLOR_FILE, 'r', encoding='utf-8') as file:
-                    color = file.readline().strip()
-                    if prev_color != color:
-                        prev_color = color
-                        await websocket.send(color)
-                        print(f'[Wal Reader] Sent new color: {color}')
+                    data = file.read()
+                    if prev_data != data:
+                        prev_data = data
+                        await websocket.send(data)
+                        print(f'[Wal Reader] Sent: \n{data}')
             except FileNotFoundError:
                 print('[Wal Reader] 🕆 Color file not found') 
             await asyncio.sleep(2)
@@ -35,7 +35,7 @@ async def handler(websocket):
     finally:
         if current_websocket is websocket:
             current_websocket = None
-            prev_color = None
+            prev_data = None
         print('[Wal Reader] 🕆 Client disconnected')
 
 async def main():

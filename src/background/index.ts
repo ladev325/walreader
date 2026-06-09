@@ -1,15 +1,15 @@
-import {canInjectScript, keepListeningToEvents} from '../background/utils/extension-api';
-import type {ColorScheme, DebugMessageBGtoCS, DebugMessageBGtoUI, DebugMessageCStoBG, ExtensionData, News, UserSettings} from '../definitions';
-import {getHelpURL, UNINSTALL_URL} from '../utils/links';
-import {emulateColorScheme, isSystemDarkModeEnabled} from '../utils/media-query';
-import {DebugMessageTypeBGtoCS, DebugMessageTypeBGtoUI, DebugMessageTypeCStoBG} from '../utils/message';
-import {isFirefox} from '../utils/platform';
+import { canInjectScript, keepListeningToEvents } from '../background/utils/extension-api';
+import type { ColorScheme, DebugMessageBGtoCS, DebugMessageBGtoUI, DebugMessageCStoBG, ExtensionData, News, UserSettings } from '../definitions';
+import { getHelpURL, UNINSTALL_URL } from '../utils/links';
+import { emulateColorScheme, isSystemDarkModeEnabled } from '../utils/media-query';
+import { DebugMessageTypeBGtoCS, DebugMessageTypeBGtoUI, DebugMessageTypeCStoBG } from '../utils/message';
+import { isFirefox } from '../utils/platform';
 
-import {Extension} from './extension';
-import {makeChromiumHappy} from './make-chromium-happy';
-import {setNewsForTesting} from './newsmaker';
-import {ASSERT} from './utils/log';
-import {sendLog} from './utils/sendLog';
+import { Extension } from './extension';
+import { makeChromiumHappy } from './make-chromium-happy';
+import { setNewsForTesting } from './newsmaker';
+import { ASSERT } from './utils/log';
+import { sendLog } from './utils/sendLog';
 
 
 type TestMessage = {
@@ -33,7 +33,7 @@ type TestMessage = {
     type: 'changeChromeStorage';
     data: {
         region: 'local' | 'sync';
-        data: {[key: string]: any};
+        data: { [key: string]: any };
     };
     id: number;
 } | {
@@ -85,24 +85,24 @@ if (__WATCH__) {
 
     const listen = () => {
         const socket = new WebSocket(`ws://localhost:${PORT}`);
-        const send = (message: {type: string}) => socket.send(JSON.stringify(message));
+        const send = (message: { type: string }) => socket.send(JSON.stringify(message));
         socket.onmessage = (e) => {
             chrome.alarms.onAlarm.removeListener(socketAlarmListener);
 
             const message = JSON.parse(e.data);
             if (message.type.startsWith('reload:')) {
-                send({type: 'reloading'});
+                send({ type: 'reloading' });
             }
             switch (message.type) {
                 case 'reload:css':
-                    chrome.runtime.sendMessage<DebugMessageBGtoUI>({type: DebugMessageTypeBGtoUI.CSS_UPDATE});
+                    chrome.runtime.sendMessage<DebugMessageBGtoUI>({ type: DebugMessageTypeBGtoUI.CSS_UPDATE });
                     break;
                 case 'reload:ui':
-                    chrome.runtime.sendMessage<DebugMessageBGtoUI>({type: DebugMessageTypeBGtoUI.UPDATE});
+                    chrome.runtime.sendMessage<DebugMessageBGtoUI>({ type: DebugMessageTypeBGtoUI.UPDATE });
                     break;
                 case 'reload:full':
                     chrome.tabs.query({}, (tabs) => {
-                        const message: DebugMessageBGtoCS = {type: DebugMessageTypeBGtoCS.RELOAD};
+                        const message: DebugMessageBGtoCS = { type: DebugMessageTypeBGtoCS.RELOAD };
                         // Some contexts are not considered to be tabs and can not receive regular messages
                         chrome.runtime.sendMessage<DebugMessageBGtoCS>(message);
                         for (const tab of tabs) {
@@ -121,15 +121,15 @@ if (__WATCH__) {
         };
         socket.onclose = () => {
             chrome.alarms.onAlarm.addListener(socketAlarmListener);
-            chrome.alarms.create(ALARM_NAME, {delayInMinutes: PING_INTERVAL_IN_MINUTES});
+            chrome.alarms.create(ALARM_NAME, { delayInMinutes: PING_INTERVAL_IN_MINUTES });
         };
     };
 
     listen();
 } else if (!__DEBUG__ && !__TEST__) {
-    chrome.runtime.onInstalled.addListener(({reason}) => {
+    chrome.runtime.onInstalled.addListener(({ reason }) => {
         if (reason === 'install') {
-            chrome.tabs.create({url: getHelpURL()});
+            chrome.tabs.create({ url: getHelpURL() });
         }
     });
 
@@ -138,8 +138,8 @@ if (__WATCH__) {
 
 if (__TEST__) {
     // Open popup and DevTools pages
-    chrome.tabs.create({url: chrome.runtime.getURL('/ui/popup/index.html'), active: false});
-    chrome.tabs.create({url: chrome.runtime.getURL('/ui/devtools/index.html'), active: false});
+    chrome.tabs.create({ url: chrome.runtime.getURL('/ui/popup/index.html'), active: false });
+    chrome.tabs.create({ url: chrome.runtime.getURL('/ui/devtools/index.html'), active: false });
 
     const socket = new WebSocket(`ws://localhost:8894`);
     socket.onopen = async () => {
@@ -156,8 +156,8 @@ if (__TEST__) {
     socket.onmessage = (e) => {
         try {
             const message: TestMessage = JSON.parse(e.data);
-            const {id, type} = message;
-            const respond = (data?: ExtensionData | string | boolean | {[key: string]: string} | null) => socket.send(JSON.stringify({
+            const { id, type } = message;
+            const respond = (data?: ExtensionData | string | boolean | { [key: string]: string } | null) => socket.send(JSON.stringify({
                 data,
                 id,
             }));
@@ -203,16 +203,16 @@ if (__TEST__) {
                 }
             }
         } catch (err) {
-            socket.send(JSON.stringify({error: String(err), original: e.data}));
+            socket.send(JSON.stringify({ error: String(err), original: e.data }));
         }
     };
 
-    chrome.downloads.onCreated.addListener(({id, mime, url, danger, paused}) => {
+    chrome.downloads.onCreated.addListener(({ id, mime, url, danger, paused }) => {
         // Cancel download
         chrome.downloads.cancel(id);
 
         try {
-            const {protocol, origin} = new URL(url);
+            const { protocol, origin } = new URL(url);
             const realOrigin = (new URL(chrome.runtime.getURL(''))).origin;
             const ok = paused === false && danger === 'safe' && protocol === 'blob:' && origin === realOrigin;
             socket.send(JSON.stringify({
@@ -243,15 +243,17 @@ function writeInstallationVersion(
     storage: chrome.storage.SyncStorageArea | chrome.storage.LocalStorageArea,
     details: chrome.runtime.InstalledDetails,
 ) {
-    storage.get<Record<string, any>>({installation: {version: ''}}, (data) => {
+    storage.get<Record<string, any>>({ installation: { version: '' } }, (data) => {
         if (data?.installation?.version) {
             return;
         }
-        storage.set({installation: {
-            date: Date.now(),
-            reason: details.reason,
-            version: details.previousVersion ?? chrome.runtime.getManifest().version,
-        }});
+        storage.set({
+            installation: {
+                date: Date.now(),
+                reason: details.reason,
+                version: details.previousVersion ?? chrome.runtime.getManifest().version,
+            }
+        });
     });
 }
 
@@ -265,26 +267,45 @@ chrome.runtime.onInstalled.addListener((details) => {
 // -------- WAL READER CUSTOM SCRIPT --------
 
 const PORT = '6767';
-const RECONNECT_DELAY = 5000;
+const RECONNECT_DELAY = 2000;
 
 let ws: WebSocket | null = null;
 const address = `ws://localhost:${PORT}`
 
-async function setColor(color: string) {
+function validateData(data: string) {
+    try {
+        const parsed = JSON.parse(data);
+        const { backgroundColor, textColor } = parsed;
+        if (!backgroundColor || !textColor ||
+            backgroundColor[0] !== '#' || textColor[0] !== '#' ||
+            backgroundColor.length !== 7 || textColor.length !== 7) {
+            throw new Error();
+        }
+        return parsed;
+    }
+    catch (error) {
+        console.log(`[Wal Reader] 🕆 Wrong data received: \n${data}`);
+        return false;
+    }
+}
+
+async function setColors(data: string) {
     await extension;
-    if (!color || color[0] !== '#' || color.length !== 7) {
-        console.log(`[Wal Reader] 🕆 Wrong color received: ${color}, must be #abcdef`)
-        return
+
+    const colors = validateData(data);
+    if (!colors) {
+        return;
     }
 
-    const data = await Extension.collectData();
+    const extData = await Extension.collectData();
     Extension.changeSettings({
         theme: {
-            ...data.settings.theme,
-            darkSchemeBackgroundColor: color,
+            ...extData.settings.theme,
+            darkSchemeBackgroundColor: colors.backgroundColor,
+            darkSchemeTextColor: colors.textColor
         }
     });
-    console.log(`[Wal Reader] New color received: ${color}`)
+    console.log(`[Wal Reader] New colors received: ${colors.backgroundColor} (bg), ${colors.textColor} (text)`)
 }
 
 function reconnect() {
@@ -307,7 +328,7 @@ function connect() {
     console.log(`[Wal Reader] Connecting to ${address}...`)
     ws = new WebSocket(address);
     ws.onopen = () => console.log(`[Wal Reader] Connected`);
-    ws.onmessage = (e) => setColor(e.data);
+    ws.onmessage = (e) => setColors(e.data);
     ws.onclose = () => reconnect();
     ws.onerror = () => { }
 }
