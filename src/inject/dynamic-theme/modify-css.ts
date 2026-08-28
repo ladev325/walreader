@@ -1,5 +1,6 @@
 import type {Theme} from '../../definitions';
-import {parseColorWithCache, rgbToHSL, hslToString, RGBA} from '../../utils/color';
+import {parseColorWithCache, rgbToHSL, hslToString} from '../../utils/color';
+import type {RGBA} from '../../utils/color';
 import type {ParsedGradient} from '../../utils/css-text/parse-gradient';
 import {parseGradient} from '../../utils/css-text/parse-gradient';
 import {clamp} from '../../utils/math';
@@ -381,7 +382,6 @@ interface BgImageMatches {
 }
 
 const imageSelectorQueue = new Map<string, Array<() => void>>();
-const imageSelectorValues = new Map<string, string>();
 const imageSelectorNodeQueue = new Set<Element>();
 let imageSelectorQueueFrameId: number | null = null;
 let classObserver: MutationObserver | null = null;
@@ -392,6 +392,11 @@ export function checkImageSelectors(node: Element | Document | ShadowRoot): void
             imageSelectorQueue.delete(selector);
             callbacks.forEach((cb) => cb());
         }
+    }
+    if (imageSelectorQueue.size === 0) {
+        classObserver?.disconnect();
+        classObserver = null;
+        return;
     }
     if (!classObserver) {
         classObserver = new MutationObserver((mutations) => {
@@ -516,7 +521,6 @@ export function getBgImageModifier(
                                 imageSelectorQueue.get(selector)!.push(resolve);
                             } else {
                                 imageSelectorQueue.set(selector, [resolve]);
-                                imageSelectorValues.set(selector, urlValue);
                             }
                         });
                     }

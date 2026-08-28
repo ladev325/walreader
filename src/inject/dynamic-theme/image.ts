@@ -297,9 +297,9 @@ function onCSPError(err: SecurityPolicyViolationEvent) {
 
 document.addEventListener('securitypolicyviolation', onCSPError);
 
-const objectURLs = new Set<string>();
+const filteredImageURLs = new Map<string, {matrix: string; url: string}>();
 
-export function getFilteredImageURL({dataURL, width, height, useViewBox}: ImageDetails, theme: Theme): string {
+export function getFilteredImageURL({dataURL, width, height, useViewBox, src}: ImageDetails, theme: Theme): string {
     if (dataURL.startsWith('data:image/svg+xml')) {
         dataURL = escapeXML(dataURL);
     }
@@ -320,13 +320,21 @@ export function getFilteredImageURL({dataURL, width, height, useViewBox}: ImageD
         return `data:image/svg+xml;base64,${btoa(svg)}`;
     }
 
+    const cached = filteredImageURLs.get(src);
+    if (cached && cached.matrix === matrix) {
+        return cached.url;
+    }
+
     const bytes = new Uint8Array(svg.length);
     for (let i = 0; i < svg.length; i++) {
         bytes[i] = svg.charCodeAt(i);
     }
     const blob = new Blob([bytes], {type: 'image/svg+xml'});
     const objectURL = URL.createObjectURL(blob);
-    objectURLs.add(objectURL);
+    if (cached) {
+        URL.revokeObjectURL(cached.url);
+    }
+    filteredImageURLs.set(src, {matrix, url: objectURL});
     return objectURL;
 }
 
@@ -403,8 +411,8 @@ export async function tryConvertDataURLToBlobURL(dataURL: string): Promise<strin
 export function cleanImageProcessingCache(): void {
     imageManager && imageManager.stop();
     removeCanvas();
-    objectURLs.forEach((u) => URL.revokeObjectURL(u));
-    objectURLs.clear();
+    filteredImageURLs.forEach(({url}) => URL.revokeObjectURL(url));
+    filteredImageURLs.clear();
     dataURLBlobURLs.forEach((u) => URL.revokeObjectURL(u));
     dataURLBlobURLs.clear();
 }

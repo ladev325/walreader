@@ -1,19 +1,28 @@
 import {forEach} from '../../utils/array';
-import {isLayerRuleSupported, isSafari} from '../../utils/platform';
+import {isContainerRuleSupported, isLayerRuleSupported, isSafari} from '../../utils/platform';
 import {escapeRegExpSpecialChars} from '../../utils/text';
 import {parseURL, getAbsoluteURL} from '../../utils/url';
 import {logInfo, logWarn} from '../utils/log';
 
-export function iterateCSSRules(rules: CSSRuleList | CSSRule[] | Set<CSSRule>, iterate: (rule: CSSStyleRule) => void, onImportError?: () => void): void {
+export function iterateCSSRules(
+    rules: CSSRuleList | CSSRule[] | Set<CSSRule>,
+    iterate: (rule: CSSStyleRule) => void,
+    onImportError?: () => void,
+    importedSheets = new Set<CSSStyleSheet>()
+): void {
     forEach(rules, (rule) => {
         if (isStyleRule(rule)) {
             iterate(rule);
             if (rule.cssRules?.length > 0) {
-                iterateCSSRules(rule.cssRules, iterate);
+                iterateCSSRules(rule.cssRules, iterate, onImportError, importedSheets);
             }
         } else if (isImportRule(rule)) {
             try {
-                iterateCSSRules(rule.styleSheet!.cssRules, iterate, onImportError);
+                const importedSheet = rule.styleSheet!;
+                if (!importedSheets.has(importedSheet)) {
+                    importedSheets.add(importedSheet);
+                    iterateCSSRules(importedSheet.cssRules, iterate, onImportError, importedSheets);
+                }
             } catch (err) {
                 logInfo(`Found a non-loaded link.`);
                 onImportError?.();
@@ -24,14 +33,16 @@ export function iterateCSSRules(rules: CSSRuleList | CSSRule[] | Set<CSSRule>, i
             const isNotScreen = !isScreenOrAllOrQuery && media.some((m) => ignoredMedia.some((i) => m.startsWith(i)));
 
             if (isScreenOrAllOrQuery || !isNotScreen) {
-                iterateCSSRules(rule.cssRules, iterate, onImportError);
+                iterateCSSRules(rule.cssRules, iterate, onImportError, importedSheets);
             }
         } else if (isSupportsRule(rule)) {
             if (CSS.supports(rule.conditionText)) {
-                iterateCSSRules(rule.cssRules, iterate, onImportError);
+                iterateCSSRules(rule.cssRules, iterate, onImportError, importedSheets);
             }
         } else if (isLayerRule(rule)) {
-            iterateCSSRules(rule.cssRules, iterate, onImportError);
+            iterateCSSRules(rule.cssRules, iterate, onImportError, importedSheets);
+        } else if (isContainerRule(rule)) {
+            iterateCSSRules(rule.cssRules, iterate, onImportError, importedSheets);
         } else {
             logWarn(`CSSRule type not supported`, rule);
         }
@@ -179,6 +190,7 @@ const importRules = new WeakSet<CSSRule>();
 const mediaRules = new WeakSet<CSSRule>();
 const supportsRules = new WeakSet<CSSRule>();
 const layerRules = new WeakSet<CSSRule>();
+const containerRules = new WeakSet<CSSRule>();
 
 export function isStyleRule(rule: CSSRule | null): rule is CSSStyleRule {
     if (!rule) {
@@ -259,6 +271,23 @@ export function isLayerRule(rule: CSSRule | null): rule is CSSLayerBlockRule {
     }
     if (isLayerRuleSupported && rule instanceof CSSLayerBlockRule) {
         layerRules.add(rule);
+        return true;
+    }
+    return false;
+}
+
+export function isContainerRule(rule: CSSRule | null): rule is CSSContainerRule {
+    if (!rule) {
+        return false;
+    }
+    if (styleRules.has(rule)) {
+        return false;
+    }
+    if (containerRules.has(rule)) {
+        return true;
+    }
+    if (isContainerRuleSupported && rule instanceof CSSContainerRule) {
+        containerRules.add(rule);
         return true;
     }
     return false;

@@ -22,6 +22,7 @@ export interface ExtensionAdapter {
     startActivation: (email: string, key: string) => Promise<void>;
     resetActivation: () => Promise<void>;
     hideHighlights: (ids: string[]) => Promise<void>;
+    waitUntilReady: () => Promise<void>;
 }
 
 export default class Messenger {
@@ -52,12 +53,15 @@ export default class Messenger {
         ];
         if (
             allowedSenderURL.includes(sender.url!) || (
-                __PLUS__ &&
-                message.type === MessageTypeUItoBG.CHANGE_SETTINGS &&
-                sender.url?.startsWith(`${HOMEPAGE_URL}/plus/activate/`)
+                message.type === MessageTypeUItoBG.CHANGE_SETTINGS && (
+                    sender.url?.startsWith(`${HOMEPAGE_URL}/activate/`) ||
+                    (__PLUS__ && sender.url?.startsWith(`${HOMEPAGE_URL}/plus/activate/`))
+                )
             )
         ) {
-            Messenger.onUIMessage(message as MessageUItoBG, sendResponse);
+            Messenger.adapter
+                .waitUntilReady()
+                .then(() => Messenger.onUIMessage(message as MessageUItoBG, sendResponse));
             return ([
                 MessageTypeUItoBG.GET_DATA,
                 MessageTypeUItoBG.GET_DEVTOOLS_DATA,

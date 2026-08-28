@@ -4,16 +4,16 @@ import {createTextStyle} from '../../generators/text-style';
 import {forEach, push, toArray} from '../../utils/array';
 import {clearColorCache, getSRGBLightness, parseColorWithCache} from '../../utils/color';
 import {clamp} from '../../utils/math';
-import {isFirefox} from '../../utils/platform';
-import {requestAnimationFrameOnce, throttle} from '../../utils/throttle';
+import {isChromium, isEdge, isFirefox, isMobile} from '../../utils/platform';
+import {throttle} from '../../utils/throttle';
 import {generateUID} from '../../utils/uid';
 import {parsedURLCache} from '../../utils/url';
 import {setDocumentVisibilityListener, documentIsVisible, removeDocumentVisibilityListener} from '../../utils/visibility';
 import {removeNode, watchForNodePosition, iterateShadowHosts, isDOMReady, removeDOMReadyListener, cleanReadyStateCompleteListeners, addDOMReadyListener, setIsDOMReady} from '../utils/dom';
 import {logInfo, logWarn} from '../utils/log';
 
-import type {AdoptedStyleSheetManager, AdoptedStyleSheetFallback} from './adopted-style-manger';
-import {createAdoptedStyleSheetOverride, createAdoptedStyleSheetFallback, canHaveAdoptedStyleSheets} from './adopted-style-manger';
+import type {AdoptedStyleSheetManager} from './adopted-style-manger';
+import {createAdoptedStyleSheetOverride, canHaveAdoptedStyleSheets} from './adopted-style-manger';
 import {combineFixes, findRelevantFix} from './fixes';
 import {getStyleInjectionMode, injectStyleAway, removeStyleContainer} from './injection';
 import {overrideInlineStyle, getInlineOverrideStyle, watchForInlineStyles, stopWatchingForInlineStyles, INLINE_STYLE_SELECTOR} from './inline-style';
@@ -35,8 +35,6 @@ declare const __CHROMIUM_MV3__: boolean;
 const INSTANCE_ID = generateUID();
 const styleManagers = new Map<StyleElement, StyleManager>();
 const adoptedStyleManagers: AdoptedStyleSheetManager[] = [];
-const adoptedStyleFallbacks = new Map<CSSStyleSheet, AdoptedStyleSheetFallback>();
-const adoptedStyleChangeTokens = new WeakMap<CSSStyleSheet, symbol>();
 let theme: Theme | null = null;
 let fixes: DynamicThemeFix | null = null;
 let isIFrame: boolean | null = null;
@@ -169,7 +167,7 @@ function setInversionStyleValue(invertStyle: HTMLStyleElement) {
     };
 
     if ((fixes && Array.isArray(fixes.invert) && fixes.invert.length > 0) || filterSelectors.invert.size > 0) {
-        const extraInversionSelectors = [...filterSelectors.invert]
+        const extraInversionSelectors = [...filterSelectors.invert];
         const invertSelectors = [...(fixes?.invert ?? []), ...extraInversionSelectors];
         const invertFilter = getCSSFilterValue({
             ...theme,
@@ -375,47 +373,7 @@ function createDynamicStyleOverrides() {
     handleAdoptedStyleSheets(document);
     variablesStore.matchVariablesAndDependents();
 
-    tryInvertChromePDF();
-
-    if (isFirefox) {
-        type NodeSheet = {
-            sheetId: number;
-            sheet: CSSStyleSheet;
-        };
-
-        const onAdoptedCssChange = (e: CustomEvent) => {
-            const {sheets} = e.detail;
-            if (!Array.isArray(sheets) || sheets.length === 0) {
-                return;
-            }
-            sheets.forEach(({sheet}: NodeSheet) => {
-                const {cssRules} = sheet;
-                variablesStore.addRulesForMatching(cssRules);
-            });
-            variablesStore.matchVariablesAndDependents();
-            const response: Array<{sheetId: number; commands: any}> = [];
-            sheets.forEach(({sheetId, sheet}: NodeSheet) => {
-                const fallback = getAdoptedStyleSheetFallback(sheet);
-                const cssRules = sheet.cssRules;
-                fallback.render({
-                    theme: theme!,
-                    ignoreImageAnalysis: ignoredImageAnalysisSelectors!,
-                    cssRules,
-                });
-                const commands = fallback.commands();
-                response.push({sheetId, commands});
-            });
-
-            requestAnimationFrameOnce(getAdoptedStyleChangeToken(sheets[0].sheet), () => {
-                document.dispatchEvent(new CustomEvent('__darkreader__adoptedStyleSheetCommands', {detail: JSON.stringify(response)}));
-            });
-        };
-
-        document.addEventListener('__darkreader__adoptedStyleSheetsChange', onAdoptedCssChange as EventListener);
-        cleaners.push(() => document.removeEventListener('__darkreader__adoptedStyleSheetsChange', onAdoptedCssChange as EventListener));
-
-        document.dispatchEvent(new CustomEvent('__darkreader__startAdoptedStyleSheetsWatcher'));
-    }
+    isEdge ? tryInvertEdgePDF() : tryInvertChromePDF();
 }
 
 let loadingStylesCounter = 0;
@@ -507,13 +465,13 @@ function createThemeAndWatchForUpdates() {
     changeMetaThemeColorWhenAvailable(theme!);
 }
 
-function handleAdoptedStyleSheets(node: ShadowRoot | Document) {
-    if (isFirefox) {
-        return;
-    }
+function unwrap<T>(value: T): T {
+    return (value as any)?.wrappedJSObject ?? value;
+}
 
+function handleAdoptedStyleSheets(node: ShadowRoot | Document) {
     if (canHaveAdoptedStyleSheets(node)) {
-        node.adoptedStyleSheets.forEach((s) => {
+        forEach(isFirefox ? unwrap(node.adoptedStyleSheets) : node.adoptedStyleSheets, (s) => {
             variablesStore.addRulesForMatching(s.cssRules);
         });
         const newManger = createAdoptedStyleSheetOverride(node);
@@ -527,24 +485,6 @@ function handleAdoptedStyleSheets(node: ShadowRoot | Document) {
             newManger.render(theme!, ignoredImageAnalysisSelectors);
         });
     }
-}
-
-function getAdoptedStyleChangeToken(sheet: CSSStyleSheet) {
-    if (adoptedStyleChangeTokens.has(sheet)) {
-        return adoptedStyleChangeTokens.get(sheet)!;
-    }
-    const token = Symbol();
-    adoptedStyleChangeTokens.set(sheet, token);
-    return token;
-}
-
-function getAdoptedStyleSheetFallback(sheet: CSSStyleSheet) {
-    let fallback = adoptedStyleFallbacks.get(sheet);
-    if (!fallback) {
-        fallback = createAdoptedStyleSheetFallback();
-        adoptedStyleFallbacks.set(sheet, fallback);
-    }
-    return fallback;
 }
 
 function watchForUpdates() {
@@ -702,6 +642,36 @@ function selectRelevantFix(documentURL: string, fixes: DynamicThemeFix[] | null)
     return relevantFixIndex ? combineFixes([fixes[0], fixes[relevantFixIndex]]) : fixes[0];
 }
 
+function createPDFOverlay(parent: ParentNode) {
+    const overlay = document.createElement('div');
+    overlay.classList.add('darkreader');
+    overlay.classList.add('darkreader--pdf-overlay');
+    overlay.style.backdropFilter = 'invert(100%) contrast(90%)';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.position = 'fixed';
+    overlay.style.left = '0px';
+    overlay.style.right = '0px';
+    overlay.style.bottom = '0px';
+    overlay.style.top = '56px';
+    parent.append(overlay);
+    cleaners.push(() => {
+        overlay.remove();
+    });
+
+    if (isEdge) {
+        const updateOffset = () => {
+            const FULLSCREEN_GAP = 10;
+            const isFullscreen = screen.height - window.innerHeight < FULLSCREEN_GAP;
+            overlay.style.top = isFullscreen ? '0px' : '41px';
+        };
+        updateOffset();
+        window.addEventListener('resize', updateOffset);
+        cleaners.push(() => {
+            window.removeEventListener('resize', updateOffset);
+        });
+    }
+}
+
 function tryInvertChromePDF() {
     if (!document.body || !chrome.dom) {
         return;
@@ -712,15 +682,28 @@ function tryInvertChromePDF() {
         return;
     }
 
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync('[type="application/pdf"] { filter: invert(1) contrast(0.9); }');
-    root.adoptedStyleSheets.push(sheet);
-    cleaners.push(() => {
-        const index = root.adoptedStyleSheets.indexOf(sheet);
-        if (index >= 0) {
-            root.adoptedStyleSheets.splice(index, 1);
-        }
-    });
+    if (isChromium && !isMobile) {
+        createPDFOverlay(root);
+    } else {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync('[type="application/pdf"] { filter: invert(1) contrast(0.9); }');
+        root.adoptedStyleSheets.push(sheet);
+        cleaners.push(() => {
+            const index = root.adoptedStyleSheets.indexOf(sheet);
+            if (index >= 0) {
+                root.adoptedStyleSheets.splice(index, 1);
+            }
+        });
+    }
+}
+
+function tryInvertEdgePDF() {
+    let embedded: HTMLElement | null;
+    if (!document.body || !(embedded = document.querySelector('embed[type="application/pdf"'))) {
+        return;
+    }
+    (embedded as HTMLElement).style.filter = 'none';
+    createPDFOverlay(document.body);
 }
 
 /**
@@ -931,7 +914,7 @@ function setupDocumentPiPFontFix(): void {
             }
             injectFontCSS(fontCSS);
         });
-        observer.observe(pipDoc, {childList: true, subtree: true})
+        observer.observe(pipDoc, {childList: true, subtree: true});
         cleaners.push(() => observer.disconnect());
         (docPiP.window as Window).addEventListener('unload', () => observer.disconnect());
     }
@@ -979,8 +962,6 @@ export function removeDynamicTheme(): void {
 
     adoptedStyleManagers.forEach((manager) => manager.destroy());
     adoptedStyleManagers.splice(0);
-    adoptedStyleFallbacks.forEach((fallback) => fallback.destroy());
-    adoptedStyleFallbacks.clear();
 
     metaObserver && metaObserver.disconnect();
     scheduleInversionStyleUpdate.cancel();

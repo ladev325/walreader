@@ -202,15 +202,16 @@ function deepWatchForInlineStyles(
             shadowRootDiscovered(n.shadowRoot!);
             deepWatchForInlineStyles(n.shadowRoot!, elementStyleDidChange, shadowRootDiscovered);
         });
-        variablesStore.matchVariablesAndDependents();
     }
 
     const treeObserver = createOptimizedTreeObserver(root, {
         onMinorMutations: (_root, {additions}) => {
             additions.forEach((added) => discoverNodes(added));
+            variablesStore.matchVariablesAndDependents();
         },
         onHugeMutations: () => {
             discoverNodes(root);
+            variablesStore.matchVariablesAndDependents();
         },
     });
     treeObservers.set(root, treeObserver);
@@ -278,6 +279,7 @@ export function stopWatchingForInlineStyles(): void {
     attrObservers.forEach((o) => o.disconnect());
     treeObservers.clear();
     attrObservers.clear();
+    inlineStringValueCache.clear();
 }
 
 const inlineStyleCache = new WeakMap<HTMLElement, string>();
@@ -299,11 +301,25 @@ function shouldAnalyzeSVGAsImage(svg: SVGSVGElement) {
     return shouldAnalyze;
 }
 
+let prevTheme: Theme | null = null;
+let themeKey = '';
+
+function getThemeKey(theme: Theme): string {
+    if (theme === prevTheme) {
+        return themeKey;
+    }
+    themeKey = '';
+    for (let i = 0; i < themeProps.length; i++) {
+        const prop = themeProps[i];
+        themeKey += `${prop}="${theme[prop]}" `;
+    }
+    prevTheme = theme;
+    return themeKey;
+}
+
 function getInlineStyleCacheKey(el: HTMLElement, theme: Theme): string {
-    return INLINE_STYLE_ATTRS
-        .map((attr) => `${attr}="${el.getAttribute(attr)}"`)
-        .concat(themeProps.map((prop) => `${prop}="${theme[prop]}"`))
-        .join(' ');
+    const attrKey = INLINE_STYLE_ATTRS.map((attr) => `${attr}="${el.getAttribute(attr)}"`);
+    return `${attrKey} ${getThemeKey(theme)}`;
 }
 
 function shouldIgnoreInlineStyle(element: HTMLElement, selectors: string[]): boolean {
@@ -331,7 +347,7 @@ function getSVGElementRoot(svgElement: SVGElement): SVGSVGElement | null {
     }
 
     if (svgNodesRoots.has(svgElement)) {
-        return svgNodesRoots.get(svgElement)!
+        return svgNodesRoots.get(svgElement)!;
     }
 
     if (svgElement instanceof SVGSVGElement) {
@@ -497,7 +513,11 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         setCustomProp('background-color', 'background-color', value);
     }
 
-    if ((element === document.documentElement || element === document.body) && element.hasAttribute('background')) {
+    if (
+        (element === document.documentElement || element === document.body) &&
+        element.hasAttribute('background') &&
+        element.getAttribute('background') !== ''
+    ) {
         const url = getAbsoluteURL(location.href, element.getAttribute('background') ?? '');
         const value = `url("${url}")`;
         setCustomProp('background-image', 'background-image', value);
@@ -536,7 +556,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                             isSVGSmall = svgRootSizeTestResults.get(root)!;
                         } else {
                             const svgBounds = root.getBoundingClientRect();
-                            isSVGSmall = svgBounds.width * svgBounds.height <= Math.pow(SMALL_SVG_THRESHOLD, 2);
+                            isSVGSmall = svgBounds.width * svgBounds.height <= SMALL_SVG_THRESHOLD ** 2;
                             svgRootSizeTestResults.set(root, isSVGSmall);
                         }
                         let isBg: boolean;

@@ -223,6 +223,28 @@ describe('CSS VARIABLES OVERRIDE', () => {
         expect(getComputedStyle(container.querySelector('h1')!).color).toBe('rgb(255, 26, 26)');
     });
 
+    it('should not hang on exponentially expanding variable references', () => {
+        const depth = 30;
+        const varLines: string[] = [];
+        for (let i = 1; i < depth; i++) {
+            varLines.push(`        --x${i}: var(--x${i + 1}) var(--x${i + 1});`);
+        }
+        varLines.push(`        --x${depth}: #770000;`);
+        container.innerHTML = multiline(
+            '<style>',
+            '    :root {',
+            ...varLines,
+            '    }',
+            '    h1 {',
+            '        color: rgb(var(--x1), 0, 0);',
+            '    }',
+            '</style>',
+            '<h1>CSS <strong>variables</strong></h1>',
+        );
+        createOrUpdateDynamicTheme(theme, null, false);
+        expect(getComputedStyle(container.querySelector('h1')!).color).toBe('rgb(255, 255, 255)');
+    });
+
     it('should handle variables having multiple types', () => {
         container.innerHTML = multiline(
             '<style>',
@@ -414,6 +436,20 @@ describe('CSS VARIABLES OVERRIDE', () => {
             '<style>',
             '    h1 {',
             '        background: rgb(var(--bg, 255, 0, 0));',
+            '    }',
+            '</style>',
+            '<h1>Colors with variables inside</h1>',
+        );
+        createOrUpdateDynamicTheme(theme, null, false);
+        expect(getComputedStyle(container.querySelector('h1')!).backgroundColor).toBe('rgb(204, 0, 0)');
+    });
+
+    it('should inspect fallback when variable is undefined', () => {
+        container.innerHTML = multiline(
+            '<style>',
+            '    h1 {',
+            '        --bg: var(--undefined-var, red);',
+            '        background: var(--bg);',
             '    }',
             '</style>',
             '<h1>Colors with variables inside</h1>',
