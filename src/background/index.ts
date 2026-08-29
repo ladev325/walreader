@@ -56,7 +56,16 @@ const welcome = `  /''''\\
  (0)==(0)
 /__||||__\\
 Welcome to Dark Reader!`;
-console.log(welcome);
+console.log(welcome + '\n');
+
+const welcome_w = ` ╱|、
+(˚ˎ 。7
+|、˜〵    
+じしˍ,)ノ
+Wal Reader by ladev325`;
+console.log(welcome_w);
+
+                           
 
 declare const __DEBUG__: boolean;
 declare const __WATCH__: boolean;
@@ -268,7 +277,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 const PORT = '6767';
 const ADDRESS = `http://localhost:${PORT}`
-const INTERVAL = 3000;
+const INTERVAL = 2000;
 
 let prevData : string | null = null;
 
@@ -294,13 +303,13 @@ async function applyColors(data: string) {
         return;
     }
     prevData = data;
-    await extension;
 
     const colors = parseData(data);
     if (!colors) {
         return;
     }
 
+    await extension;
     const extData = await Extension.collectData();
     Extension.changeSettings({
         theme: {
@@ -309,7 +318,7 @@ async function applyColors(data: string) {
             darkSchemeTextColor: colors.textColor
         }
     });
-    console.log(`[Wal Reader] New colors applied: ${colors.backgroundColor} (bg), ${colors.textColor} (text)`)
+    console.log(`[Wal Reader] New colors: ${colors.backgroundColor} (bg), ${colors.textColor} (text)`)
 }
 
 function startWalReader() {
@@ -317,13 +326,13 @@ function startWalReader() {
         try {
             const response = await fetch(ADDRESS);
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                throw new Error(`[Wal Reader] 🕆 HTTP error: ${response.status}`);
             }
             const data = await response.text();
             applyColors(data);
         }
         catch (error) {
-            console.error(`[Wal Reader] Error fetching data:`, error);
+            console.error(`[Wal Reader] 🕆 Error fetching data: `, error);
         }
     }, INTERVAL);
 }

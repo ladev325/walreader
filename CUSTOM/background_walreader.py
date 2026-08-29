@@ -6,6 +6,7 @@ import time
 
 COLOR_FILE = Path.home() / ".cache" / "wal" / "walreader.json"
 PORT = 6767
+INTERVAL = 2.4
 
 data = None
 
@@ -17,7 +18,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(503)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
-            print('[Wal Reader] 🕆 Sent: 503, data = None')
+            print('[Wal Reader] 🕆 Sent 503 because colors are None')
         else:
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
@@ -31,9 +32,9 @@ def check_file():
         try:
             with open(COLOR_FILE, 'r', encoding='utf-8') as file:
                 data = file.read()
-        except FileNotFoundError:
-            print('[Wal Reader] 🕆 Color file not found')
-        time.sleep(1)
+        except Exception as e:
+            print(f'[Wal Reader] 🕆 File error: {e}')
+        time.sleep(INTERVAL)
 
 print(f'[Wal Reader] The server is running on http://localhost:{PORT}')
 threading.Thread(target=check_file, daemon=True).start()
