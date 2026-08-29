@@ -264,15 +264,15 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 
 
-// -------- WAL READER CUSTOM SCRIPT --------
+// -------- WALREADER CUSTOM SCRIPT --------
 
 const PORT = '6767';
-const RECONNECT_DELAY = 2000;
+const ADDRESS = `http://localhost:${PORT}`
+const INTERVAL = 3000;
 
-let ws: WebSocket | null = null;
-const address = `ws://localhost:${PORT}`
+let prevData : string | null = null;
 
-function validateData(data: string) {
+function parseData(data: string) {
     try {
         const parsed = JSON.parse(data);
         const { backgroundColor, textColor } = parsed;
@@ -289,10 +289,14 @@ function validateData(data: string) {
     }
 }
 
-async function setColors(data: string) {
+async function applyColors(data: string) {
+    if (data === prevData) {
+        return;
+    }
+    prevData = data;
     await extension;
 
-    const colors = validateData(data);
+    const colors = parseData(data);
     if (!colors) {
         return;
     }
@@ -305,32 +309,23 @@ async function setColors(data: string) {
             darkSchemeTextColor: colors.textColor
         }
     });
-    console.log(`[Wal Reader] New colors received: ${colors.backgroundColor} (bg), ${colors.textColor} (text)`)
+    console.log(`[Wal Reader] New colors applied: ${colors.backgroundColor} (bg), ${colors.textColor} (text)`)
 }
 
-function reconnect() {
-    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-        return;
-    }
-    const seconds = Math.round(RECONNECT_DELAY / 1000);
-    console.log(`[Wal Reader] Awaiting reconnect, wait ${seconds} seconds...`)
-    setTimeout(() => connect(), RECONNECT_DELAY);
+function startWalReader() {
+    setInterval(async () => {
+        try {
+            const response = await fetch(ADDRESS);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            const data = await response.text();
+            applyColors(data);
+        }
+        catch (error) {
+            console.error(`[Wal Reader] Error fetching data:`, error);
+        }
+    }, INTERVAL);
 }
 
-function connect() {
-    // just in case
-    if (ws) {
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.close();
-    }
-
-    console.log(`[Wal Reader] Connecting to ${address}...`)
-    ws = new WebSocket(address);
-    ws.onopen = () => console.log(`[Wal Reader] Connected`);
-    ws.onmessage = (e) => setColors(e.data);
-    ws.onclose = () => reconnect();
-    ws.onerror = () => { }
-}
-
-connect()
+startWalReader();
